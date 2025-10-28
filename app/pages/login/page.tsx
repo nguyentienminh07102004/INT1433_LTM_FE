@@ -7,6 +7,7 @@ import InputLabel from "@mui/material/InputLabel";
 import React from "react";
 import { createCookie, Form, redirect } from "react-router";
 import type { Route } from "./+types/page";
+import { cookieToken } from "~/utils/CookieManager";
 
 export async function action({ request }: Route.ActionArgs) {
 	let formData = await request.formData();
@@ -21,13 +22,9 @@ export async function action({ request }: Route.ActionArgs) {
 	});
 	if (res.ok) {
 		const data = await res.text();
-        const cookie = createCookie("token", {
-            maxAge: 60 * 60 * 24,
-            httpOnly: true,
-        });
         return redirect("/", {
             headers: {
-                "Set-Cookie": await cookie.serialize(data),
+                "Set-Cookie": await cookieToken.serialize(data),
             },
         });
 	}
