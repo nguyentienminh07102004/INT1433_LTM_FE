@@ -5,20 +5,20 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { styled } from "@mui/material/styles";
 import React from "react";
+import { redirect } from "react-router";
 import type { Socket } from "socket.io-client";
 import UserCardComponent from "~/components/UserCardComponent";
 import SocketIOConfiguration from "~/configuration/SocketIOConfiguration";
 import type { UserResponse } from "~/types/User";
-import type { Route } from "./+types/page";
-import { redirect } from "react-router";
 import { cookieToken } from "~/utils/CookieManager";
+import type { Route } from "./+types/page";
 
-export async function loader({request, }: Route.LoaderArgs) {
+export async function loader({ request }: Route.LoaderArgs) {
 	const token = await cookieToken.parse(request.headers.get("Cookie") || "");
-    if (!token) {
-        return redirect("/login");
-    }
-    return token;
+	if (!token) {
+		return redirect("/login");
+	}
+	return token;
 }
 
 export default function HomePage({ loaderData }: Route.ComponentProps) {
@@ -31,11 +31,16 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
 		const getAllUsers = (data: UserResponse[]) => {
 			setUsers(data);
 		};
+		const changeUserStatus = ({ username, status }: { username: string; status: "ONLINE" | "OFFLINE" }) => {
+			setUsers((prevUsers) => prevUsers.map((user) => (user.username === username ? { ...user, status: status } : user)));
+		};
 		socket.current.on("topic/getAllUsersResponse", getAllUsers);
+		socket.current.on("topic/changeStatus", changeUserStatus);
 		socket.current.on("connect", onConnect);
 		return () => {
 			socket.current.off("connect", onConnect);
 			socket.current.off("topic/getAllUsersResponse", getAllUsers);
+			socket.current.off("topic/changeStatus", changeUserStatus);
 		};
 	}, []);
 	console.log("Socket ID:", socket.current.id);
@@ -62,9 +67,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
 									))}
 								</Stack>
 							</Grid>
-							<Grid size={8}>
-								<Item sx={{ height: "100%", boxSizing: "border-box" }}>Column 2</Item>
-							</Grid>
+							<Grid size={8}></Grid>
 						</Grid>
 					</Box>
 				</Container>

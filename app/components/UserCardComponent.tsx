@@ -11,7 +11,7 @@ export default function UserCardComponent({ user }: { user: UserResponse }) {
 		<>
 			<Card>
 				<CardContent className="flex justify-between items-center">
-					<Badge variant="dot" color="primary">
+					<Badge variant="dot" color="primary" invisible={user.status !== "ONLINE"}>
 						<AccountCircleIcon className="w-7" />
 					</Badge>
 					<Typography>{user.fullName}</Typography>
