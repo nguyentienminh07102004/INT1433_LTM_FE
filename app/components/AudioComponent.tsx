@@ -5,6 +5,6 @@ export default function AudioComponent() {
         <audio controls>
             <source src="" type="" />
         </audio>
-
+        
     </React.Fragment>
 }
