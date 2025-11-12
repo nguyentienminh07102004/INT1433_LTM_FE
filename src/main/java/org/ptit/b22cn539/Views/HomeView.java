@@ -12,7 +12,6 @@ import lombok.experimental.FieldDefaults;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.ptit.b22cn539.Handler.ClientHandler;
 
 @Getter
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -23,7 +22,7 @@ public class HomeView extends JFrame {
 
     public HomeView(Socket socket) throws IOException {
         FlatLightLaf.setup();
-        setTitle("🎵 Sảnh Chờ - Game Đoán Âm Thanh");
+        setTitle("Sảnh Chờ - Game Đoán Âm Thanh");
         setSize(700, 450);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -41,10 +40,8 @@ public class HomeView extends JFrame {
         table = new JTable(tableModel);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        // Kết nối socket
         this.socket = socket;
 
-        // Thanh nút phía dưới
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
         JButton btnInvite = new JButton("Mời chơi");
         JButton btnRanking = new JButton("Xếp hạng");
@@ -54,9 +51,6 @@ public class HomeView extends JFrame {
         bottom.add(btnLogout);
         add(bottom, BorderLayout.SOUTH);
 
-        // --------------------- SỰ KIỆN ---------------------
-
-        // Khi nhấn nút "Mời chơi"
         btnInvite.addActionListener((e) -> {
             int selectedRow = table.getSelectedRow();
             if (selectedRow == -1) {
@@ -66,6 +60,7 @@ public class HomeView extends JFrame {
                 return;
             }
             String invitedUsername = (String) table.getValueAt(selectedRow, 1);
+            System.out.println("[HomeView] Emitting topic/inviteUser -> " + invitedUsername);
             socket.emit("topic/inviteUser", invitedUsername);
             JOptionPane.showMessageDialog(this,
                     "Đã gửi lời mời chơi đến " + invitedUsername,
@@ -76,28 +71,53 @@ public class HomeView extends JFrame {
             RankingView topRankingView = new RankingView(socket);
             topRankingView.setVisible(true);
         });
-        // Khi server gửi danh sách người chơi
         socket.on("topic/getAllUsersResponse", args -> {
-            JSONArray users = (JSONArray) args[0];
-            SwingUtilities.invokeLater(() -> {
-                try {
-                    tableModel.setRowCount(0);
-                    for (int i = 0; i < users.length(); i++) {
-                        JSONObject u = users.getJSONObject(i);
-                        tableModel.addRow(new Object[]{
-                                u.getLong("id"),
-                                u.getString("username"),
-                                u.getString("fullName"),
-                                u.getString("status")
-                        });
+            System.out.println("[HomeView] Received topic/getAllUsersResponse -> " + (args != null && args.length > 0 ? args[0] : "null"));
+            Object obj = args[0];
+            if (obj instanceof JSONArray) {
+                JSONArray users = (JSONArray) obj;
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        tableModel.setRowCount(0);
+                        for (int i = 0; i < users.length(); i++) {
+                            JSONObject u = users.getJSONObject(i);
+                            tableModel.addRow(new Object[]{
+                                    u.optLong("id", -1L),
+                                    u.optString("username", ""),
+                                    u.optString("fullName", ""),
+                                    u.optString("status", "")
+                            });
+                        }
+                    } catch (JSONException e) {
+                        e.printStackTrace();
                     }
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            });
+                });
+            } else if (obj instanceof JSONObject) {
+                JSONObject wrapper = (JSONObject) obj;
+                SwingUtilities.invokeLater(() -> {
+                    tableModel.setRowCount(0);
+                    try {
+                        if (wrapper.has("users")) {
+                            JSONArray users = wrapper.getJSONArray("users");
+                            for (int i = 0; i < users.length(); i++) {
+                                JSONObject u = users.getJSONObject(i);
+                                tableModel.addRow(new Object[]{
+                                        u.optLong("id", -1L),
+                                        u.optString("username", ""),
+                                        u.optString("fullName", ""),
+                                        u.optString("status", "")
+                                });
+                            }
+                        }
+                    } catch (JSONException ex) {
+                        ex.printStackTrace();
+                    }
+                });
+            } else {
+                System.out.println("[HomeView] Unexpected data type for getAllUsersResponse: " + (obj != null ? obj.getClass() : "null"));
+            }
         });
-        socket.emit("topic/getAllUsersResponse");
-        // Khi có lời mời từ người khác
+
         socket.on("topic/inviteUser", args -> {
             try {
                 JSONObject json = (JSONObject) args[0];
@@ -111,6 +131,7 @@ public class HomeView extends JFrame {
                             JOptionPane.YES_NO_OPTION
                     );
                     if (choice == JOptionPane.YES_OPTION) {
+                        System.out.println("[HomeView] Accepting invite from " + fromUser);
                         socket.emit("topic/acceptInvite", fromUser);
                     }
                 });
@@ -119,7 +140,6 @@ public class HomeView extends JFrame {
             }
         });
 
-        // Khi server gửi thông tin khởi tạo game
         socket.on("topic/initGame", args -> {
             try {
                 JSONObject data = (JSONObject) args[0];
@@ -138,14 +158,14 @@ public class HomeView extends JFrame {
             }
         });
 
-        // Khi bấm "Đăng xuất"
         btnLogout.addActionListener(e -> {
             socket.disconnect();
             dispose();
             new LoginView().setVisible(true);
         });
-
-        // Yêu cầu server gửi danh sách người chơi ngay khi mở màn
-        socket.emit("topic/getAllUsers");
+        socket.on("error", o -> {
+            socket.emit("topic/getAllUsersResponse");
+        });
+        socket.emit("topic/getAllUsersResponse");
     }
 }

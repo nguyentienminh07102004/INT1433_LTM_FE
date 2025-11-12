@@ -121,7 +121,7 @@ public class GameView extends JFrame {
             JSONObject data = (JSONObject) args[0];
             SwingUtilities.invokeLater(() -> {
                 JOptionPane.showMessageDialog(this,
-                        "🎯 Kết thúc trò chơi!\nTổng điểm của bạn: " + data.optInt("totalScore", score),
+                        "Kết thúc trò chơi!\nTổng điểm của bạn: " + data.optInt("totalScore", score),
                         "Game Over", JOptionPane.INFORMATION_MESSAGE);
                 dispose();
                 try {
@@ -150,7 +150,7 @@ public class GameView extends JFrame {
                     answers.add(new AnswerResponse(ans.getLong("id"), ans.getString("description")));
                 }
             }
-
+            System.out.println(url);
             currentMusic = new MusicResponse(id, title, description, url, answers);
 
             lblQuestion.setText("Câu " + (currentQuestionIndex + 1) + "/" + musicIds.length() + ": " + title);
@@ -176,7 +176,6 @@ public class GameView extends JFrame {
         }
     }
 
-    /** Bắt đầu countdown 10s */
     private void startCountdown() {
         if (timer != null) timer.stop();
         lblTimer.setText("⏳ " + timeLeft + "s");
