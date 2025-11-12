@@ -1,47 +1,72 @@
 package org.ptit.b22cn539.Views;
 
-import com.formdev.flatlaf.FlatLightLaf;
+import io.socket.client.Socket;
+import org.json.JSONObject;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class RankingView extends JFrame {
 
-    public RankingView() {
-        FlatLightLaf.setup();
-        setTitle("🏆 Bảng Xếp Hạng");
-        setSize(600, 400);
+    private final Socket socket;
+    private JTable rankingTable;
+
+    public RankingView(Socket socket) {
+        this.socket = socket;
+
+        setTitle("🏆 Bảng xếp hạng");
+        setSize(400, 500);
         setLocationRelativeTo(null);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
 
-        JLabel lblTitle = new JLabel("Bảng Xếp Hạng Toàn Hệ Thống", SwingConstants.CENTER);
-        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lblTitle.setForeground(new Color(0x0078D7));
-        add(lblTitle, BorderLayout.NORTH);
+        // Tiêu đề
+        JLabel title = new JLabel("Bảng xếp hạng người chơi", SwingConstants.CENTER);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        add(title, BorderLayout.NORTH);
 
-        String[] columns = {"Thứ hạng", "Tên người chơi", "Điểm tích lũy", "Số trận thắng"};
-        Object[][] data = {
-                {"1", "Thảo", "210", "15"},
-                {"2", "Minh", "180", "13"},
-                {"3", "An", "170", "12"},
-                {"4", "Hà", "150", "10"},
-        };
+        // Tạo JTable
+        String[] headers = {"Hạng", "Tên người chơi", "Điểm"};
+        DefaultTableModel tableModel = new DefaultTableModel(headers, 0);
+        rankingTable = new JTable(tableModel);
+        rankingTable.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        rankingTable.setRowHeight(25);
+        add(new JScrollPane(rankingTable), BorderLayout.CENTER);
 
-        JTable table = new JTable(new DefaultTableModel(data, columns));
-        table.setRowHeight(28);
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        // Đăng ký listener trước khi emit
+        socket.on("topic/getTopRanking", args -> {
+            Object obj = args[0];
+            System.out.println("Received: " + obj + " | class: " + obj.getClass());
 
-        JButton btnBack = new JButton("⬅ Quay lại sảnh chờ");
-        btnBack.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        btnBack.setBackground(new Color(0x0078D7));
-        btnBack.setForeground(Color.WHITE);
-        btnBack.setFocusPainted(false);
-        btnBack.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+            if (obj instanceof JSONObject json) {
+                Map<String, Long> ranking = new LinkedHashMap<>();
+                Iterator<String> keys = json.keys();
+                while (keys.hasNext()) {
+                    String k = keys.next();
+                    ranking.put(k, json.optLong(k));
+                }
+                // Cập nhật JTable trên EDT
+                SwingUtilities.invokeLater(() -> updateTable(ranking));
+            }
+        });
+        socket.emit("topic/getTopRanking");
+        setVisible(true);
+    }
 
-        JPanel bottom = new JPanel();
-        bottom.add(btnBack);
-        add(bottom, BorderLayout.SOUTH);
+    /**
+     * Cập nhật dữ liệu bảng xếp hạng
+     */
+    private void updateTable(Map<String, Long> ranking) {
+        DefaultTableModel model = (DefaultTableModel) rankingTable.getModel();
+        model.setRowCount(0); // Xóa dữ liệu cũ
+
+        int rank = 1;
+        for (Map.Entry<String, Long> entry : ranking.entrySet()) {
+            model.addRow(new Object[]{rank++, entry.getKey(), entry.getValue()});
+        }
     }
 }

@@ -1,162 +1,104 @@
 package org.ptit.b22cn539.Views;
 
-import com.formdev.flatlaf.FlatLightLaf;
 import io.socket.client.Socket;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.GridLayout;
-import java.io.File;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.swing.JButton;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
-import javax.swing.Timer;
-import javax.swing.border.EmptyBorder;
+import java.io.IOException;
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
+import org.ptit.b22cn539.DTO.MusicResponse;
+import org.ptit.b22cn539.DTO.AnswerResponse;
 
+import javax.sound.sampled.*;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * GameView: màn hình chơi game đoán nhạc realtime
+ */
 public class GameView extends JFrame {
+
     private final Socket socket;
-    private JLabel lblTimer;
-    private JLabel lblScore;
-    private JLabel lblQuestion; // Thêm label hiển thị số câu
+    private final Long gameId;
+    private final JSONArray musicIds;
+
+    private int currentQuestionIndex = 0;
+    private int score = 0;
+
     private final JButton[] answerButtons = new JButton[4];
+    private final JLabel lblQuestion = new JLabel();
+    private final JLabel lblTimer = new JLabel();
+    private final JLabel lblScore = new JLabel();
+    private final JButton btnPlay = new JButton("▶ Nghe");
+
     private Timer timer;
     private int timeLeft = 10;
-    private int score = 0;
-    private long gameItemId;
+    private volatile boolean answeredThisRound = false;
+    private MusicResponse currentMusic;
 
-
-    private final JSONArray musicIds;
-    private final JSONArray gameItemIds;
-    private final long gameId;
-    private int currentQuestionIndex = 0;
-
-    public GameView(Socket socket, JSONArray musicIds, JSONArray gameItemIds, long gameId) {
+    public GameView(Socket socket, Long gameId, JSONArray musicIds) {
         this.socket = socket;
-        this.musicIds = musicIds;
-        this.gameItemIds = gameItemIds;
         this.gameId = gameId;
+        this.musicIds = musicIds;
 
-        FlatLightLaf.setup();
-        initUI();
-        registerSocketEvents();
-    }
-
-    private void initUI() {
-        setTitle("Thi Đấu - Game Đoán Âm Thanh");
-        setSize(600, 500);
+        setTitle("🎵 Trận đấu âm thanh");
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setSize(500, 400);
         setLocationRelativeTo(null);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
 
-        // Top panel với timer, score và câu hỏi hiện tại
-        JPanel topPanel = new JPanel(new BorderLayout());
-
-        lblTimer = new JLabel("⏳ 10s", SwingConstants.LEFT);
-        lblScore = new JLabel("Điểm: 0", SwingConstants.RIGHT);
-        lblQuestion = new JLabel("Câu 1/" + musicIds.length(), SwingConstants.CENTER);
-
-        lblTimer.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        lblScore.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        lblQuestion.setFont(new Font("Segoe UI", Font.BOLD, 16));
-
-        topPanel.add(lblTimer, BorderLayout.WEST);
-        topPanel.add(lblQuestion, BorderLayout.CENTER);
-        topPanel.add(lblScore, BorderLayout.EAST);
-        topPanel.setBorder(new EmptyBorder(10, 20, 10, 20));
+        // Top panel: câu hỏi, timer, điểm
+        JPanel topPanel = new JPanel(new GridLayout(1, 3));
+        lblQuestion.setHorizontalAlignment(SwingConstants.LEFT);
+        lblTimer.setHorizontalAlignment(SwingConstants.CENTER);
+        lblScore.setHorizontalAlignment(SwingConstants.RIGHT);
+        lblScore.setText("Điểm: 0");
+        topPanel.add(lblQuestion);
+        topPanel.add(lblTimer);
+        topPanel.add(lblScore);
         add(topPanel, BorderLayout.NORTH);
 
-        JButton btnPlaySound = new JButton("🔊 Nghe âm thanh");
-        btnPlaySound.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        btnPlaySound.setBackground(new Color(0x0078D7));
-        btnPlaySound.setForeground(Color.WHITE);
-        btnPlaySound.setFocusPainted(false);
-        btnPlaySound.setBorder(new EmptyBorder(15, 20, 15, 20));
-        btnPlaySound.addActionListener(e -> playSoundFromServer());
-        add(btnPlaySound, BorderLayout.CENTER);
-
+        // Center panel: 4 đáp án
         JPanel answersPanel = new JPanel(new GridLayout(2, 2, 10, 10));
-        answersPanel.setBorder(new EmptyBorder(20, 30, 30, 30));
-        add(answersPanel, BorderLayout.SOUTH);
-
         for (int i = 0; i < 4; i++) {
-            JButton btn = new JButton("Đáp án " + (i + 1));
-            btn.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-            btn.setBackground(new Color(240, 240, 240));
-            btn.setFocusPainted(false);
-            final int index = i;
-            btn.addActionListener(e -> sendAnswer(index));
-            answerButtons[i] = btn;
-            answersPanel.add(btn);
+            int index = i;
+            answerButtons[i] = new JButton("Đáp án " + (i + 1));
+            answerButtons[i].setFont(new Font("Segoe UI", Font.BOLD, 14));
+            answerButtons[i].addActionListener(e -> sendAnswer(index));
+            answersPanel.add(answerButtons[i]);
         }
+        add(answersPanel, BorderLayout.CENTER);
+
+        // Bottom panel: nút nghe nhạc
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        btnPlay.setEnabled(false);
+        btnPlay.addActionListener(e -> playMusic());
+        bottomPanel.add(btnPlay);
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        registerSocketEvents();
+        sendChangeQuestion(); // load câu hỏi đầu tiên
+
+        setVisible(true);
     }
 
-    private void updateQuestionUI(JSONObject data) {
+    /** Gửi yêu cầu server chuyển sang câu hỏi hiện tại */
+    private void sendChangeQuestion() {
         try {
-            this.gameItemId = data.getLong("id");
-            JSONArray answers = data.getJSONArray("answers");
-
-            // Update câu hỏi hiện tại
-            lblQuestion.setText("Câu " + (currentQuestionIndex + 1) + "/" + musicIds.length());
-
-            for (int i = 0; i < answers.length(); i++) {
-                JSONObject ans = answers.getJSONObject(i);
-                answerButtons[i].setText(ans.getString("description"));
-                answerButtons[i].setEnabled(true);
-                answerButtons[i].setBackground(new Color(240, 240, 240));
+            if (musicIds == null || currentQuestionIndex >= musicIds.length()) {
+                finishGame();
+                return;
             }
 
-            // Reset timer
-            if (timer != null) timer.stop();
-            timeLeft = 10;
-            lblTimer.setText("⏳ " + timeLeft + "s");
-            timer = new Timer(1000, e -> {
-                try {
-                    timeLeft--;
-                    lblTimer.setText("⏳ " + timeLeft + "s");
-                    if (timeLeft <= 0) {
-                        timer.stop();
-                        disableButtons();
-                        // Tự động submit với answerId = -1 (không chọn)
-                        socket.emit("topic/handleAnswer", new JSONObject()
-                                .put("gameItemId", gameItemIds.getLong(currentQuestionIndex))
-                                .put("answerId", -1)
-                                .toString());
-                    }
-                } catch (JSONException ex) {
-                    ex.printStackTrace();
-                }
-            });
-            timer.start();
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendAnswer(int index) {
-        try {
-            if (timer != null) timer.stop();
-            disableButtons();
-
-            // Lấy answerId thực từ data
-            JSONObject answerData = new JSONObject(answerButtons[index].getText());
-            long answerId = answerData.optLong("id", index + 1);
-
-            JSONObject payload = new JSONObject();
-            payload.put("gameItemId", gameItemIds.getLong(currentQuestionIndex));
-            payload.put("answerId", answerId);
-
-            socket.emit("topic/handleAnswer", payload.toString());
-        } catch (JSONException e) {
+            long musicId = musicIds.getLong(currentQuestionIndex);
+            socket.emit("topic/changeQuestion", java.util.Map.of(
+                    "musicId", String.valueOf(musicId),
+                    "gameId", String.valueOf(gameId)
+            ));
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -168,80 +110,156 @@ public class GameView extends JFrame {
         });
 
         socket.on("topic/answerResult", args -> {
-            try {
-                JSONObject res = new JSONObject(args[0].toString());
-                int point = res.optInt("score", 0);
-                SwingUtilities.invokeLater(() -> {
-                    updateScore(point);
-
-                    // Chuyển câu hỏi tiếp theo sau 1.5 giây
-                    Timer delayTimer = new Timer(1500, e -> {
-                        currentQuestionIndex++;
-
-                        if (currentQuestionIndex < musicIds.length()) {
-                            // Còn câu hỏi -> emit changeQuestion
-                            try {
-                                JSONObject changeData = new JSONObject();
-                                changeData.put("musicId", musicIds.getLong(currentQuestionIndex));
-                                socket.emit("topic/changeQuestion", changeData.toString());
-                            } catch (JSONException ex) {
-                                ex.printStackTrace();
-                            }
-                        } else {
-                            // Hết câu hỏi -> emit finishGame
-                            try {
-                                JSONObject finishData = new JSONObject();
-                                finishData.put("gameId", gameId);
-                                socket.emit("topic/finishGame", finishData.toString());
-                            } catch (JSONException ex) {
-                                ex.printStackTrace();
-                            }
-                        }
-                    });
-                    delayTimer.setRepeats(false);
-                    delayTimer.start();
-                });
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
+            JSONObject data = (JSONObject) args[0];
+            SwingUtilities.invokeLater(() -> {
+                score += data.optInt("score", 0);
+                lblScore.setText("Điểm: " + score);
+            });
         });
 
         socket.on("topic/finishGame", args -> {
-            try {
-                JSONObject res = new JSONObject(args[0].toString());
-                int totalScore = res.optInt("totalScore", 0);
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(this,
-                            "Trận đấu kết thúc!\nTổng điểm của bạn: " + totalScore,
-                            "Kết quả", JOptionPane.INFORMATION_MESSAGE);
-                    this.dispose();
-                });
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
+            JSONObject data = (JSONObject) args[0];
+            SwingUtilities.invokeLater(() -> {
+                JOptionPane.showMessageDialog(this,
+                        "🎯 Kết thúc trò chơi!\nTổng điểm của bạn: " + data.optInt("totalScore", score),
+                        "Game Over", JOptionPane.INFORMATION_MESSAGE);
+                dispose();
+                try {
+                    new HomeView(socket).setVisible(true);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         });
     }
 
-    private void updateScore(int point) {
-        score += point;
-        lblScore.setText("Điểm: " + score);
+    /** Cập nhật UI dựa trên MusicResponse server trả về */
+    private void updateQuestionUI(JSONObject data) {
+        try {
+            // Chuyển JSONObject thành MusicResponse
+            Long id = data.getLong("id");
+            String title = data.optString("title");
+            String description = data.optString("description");
+            String url = data.optString("url");
+
+            List<AnswerResponse> answers = new ArrayList<>();
+            JSONArray arr = data.optJSONArray("answers");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject ans = arr.getJSONObject(i);
+                    answers.add(new AnswerResponse(ans.getLong("id"), ans.getString("description")));
+                }
+            }
+
+            currentMusic = new MusicResponse(id, title, description, url, answers);
+
+            lblQuestion.setText("Câu " + (currentQuestionIndex + 1) + "/" + musicIds.length() + ": " + title);
+            btnPlay.setEnabled(url != null && !url.isEmpty());
+
+            // Đặt các nút đáp án
+            answeredThisRound = false;
+            timeLeft = 10;
+            for (int i = 0; i < 4; i++) {
+                if (i < answers.size()) {
+                    answerButtons[i].setText(answers.get(i).getDescription());
+                    answerButtons[i].setEnabled(true);
+                } else {
+                    answerButtons[i].setText("Đáp án " + (i + 1));
+                    answerButtons[i].setEnabled(false);
+                }
+            }
+
+            startCountdown();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** Bắt đầu countdown 10s */
+    private void startCountdown() {
+        if (timer != null) timer.stop();
+        lblTimer.setText("⏳ " + timeLeft + "s");
+
+        timer = new Timer(1000, new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                timeLeft--;
+                lblTimer.setText("⏳ " + timeLeft + "s");
+
+                if (timeLeft <= 0) {
+                    timer.stop();
+                    disableButtons();
+                    if (!answeredThisRound) autoSendAnswer();
+                    currentQuestionIndex++;
+                    sendChangeQuestion();
+                }
+            }
+        });
+        timer.start();
+    }
+
+    private void sendAnswer(int index) {
+        if (answeredThisRound) return;
+        answeredThisRound = true;
+        disableButtons();
+
+        try {
+            long answerId = -1;
+            if (currentMusic.getAnswers() != null && index < currentMusic.getAnswers().size()) {
+                answerId = currentMusic.getAnswers().get(index).getId();
+            }
+
+            socket.emit("topic/handleAnswer", java.util.Map.of(
+                    "musicId", String.valueOf(currentMusic.getId()),
+                    "answerId", String.valueOf(answerId),
+                    "gameId", String.valueOf(gameId)
+            ));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void autoSendAnswer() {
+        answeredThisRound = true;
+        try {
+            socket.emit("topic/handleAnswer", java.util.Map.of(
+                    "musicId", String.valueOf(currentMusic.getId()),
+                    "answerId", "-1",
+                    "gameId", String.valueOf(gameId)
+            ));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void finishGame() {
+        try {
+            socket.emit("topic/finishGame", java.util.Map.of(
+                    "gameId", String.valueOf(gameId),
+                    "score", String.valueOf(score)
+            ));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void disableButtons() {
-        for (JButton btn : answerButtons) {
-            btn.setEnabled(false);
-        }
+        for (JButton btn : answerButtons) btn.setEnabled(false);
     }
 
-    private void playSoundFromServer() {
-        try {
-            File file = new File("sound.wav");
-            AudioInputStream audioIn = AudioSystem.getAudioInputStream(file);
-            Clip clip = AudioSystem.getClip();
-            clip.open(audioIn);
-            clip.start();
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Không thể phát âm thanh: " + e.getMessage());
-        }
+    /** Nghe nhạc từ url */
+    private void playMusic() {
+        if (currentMusic == null || currentMusic.getUrl() == null || currentMusic.getUrl().isEmpty()) return;
+        new Thread(() -> {
+            try {
+                AudioInputStream audioIn = AudioSystem.getAudioInputStream(new URL(currentMusic.getUrl()));
+                Clip clip = AudioSystem.getClip();
+                clip.open(audioIn);
+                clip.start();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 }

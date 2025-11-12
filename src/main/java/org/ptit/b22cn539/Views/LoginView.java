@@ -20,6 +20,7 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import org.json.JSONObject;
+import org.ptit.b22cn539.Handler.ClientHandler;
 
 public class LoginView extends JFrame {
 
@@ -73,10 +74,16 @@ public class LoginView extends JFrame {
                 }
                 Files.writeString(filePath, token, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
                 this.dispose();
-                new HomeView(token).setVisible(true);
+                ClientHandler clientHandler = new ClientHandler(token);
+                new HomeView(clientHandler.getSocket()).setVisible(true);
             } catch (Exception exception) {
                 System.out.println(exception.getMessage());
             }
+        });
+
+        btnRegister.addActionListener((event) -> {
+            this.dispose();
+            new RegisterForm().setVisible(true);
         });
     }
 }

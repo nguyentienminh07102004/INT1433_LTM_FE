@@ -2,20 +2,9 @@ package org.ptit.b22cn539.Views;
 
 import com.formdev.flatlaf.FlatLightLaf;
 import io.socket.client.Socket;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.FlowLayout;
-import java.awt.Font;
+import java.awt.*;
 import java.io.IOException;
-import javax.swing.JButton;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -29,24 +18,33 @@ import org.ptit.b22cn539.Handler.ClientHandler;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class HomeView extends JFrame {
     final Socket socket;
+    final DefaultTableModel tableModel;
+    final JTable table;
 
-    public HomeView(String token) throws IOException {
+    public HomeView(Socket socket) throws IOException {
         FlatLightLaf.setup();
-        setTitle("Sảnh Chờ - Game Đoán Âm Thanh");
-        this.setSize(700, 450);
-        this.setLocationRelativeTo(null);
-        this.setDefaultCloseOperation(EXIT_ON_CLOSE);
-        this.setLayout(new BorderLayout(10, 10));
+        setTitle("🎵 Sảnh Chờ - Game Đoán Âm Thanh");
+        setSize(700, 450);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLayout(new BorderLayout(10, 10));
+
+        // Tiêu đề
         JLabel title = new JLabel("Danh sách người chơi trực tuyến", SwingConstants.CENTER);
         title.setFont(new Font("Segoe UI", Font.BOLD, 22));
         title.setForeground(new Color(0x0078D7));
-        this.add(title, BorderLayout.NORTH);
+        add(title, BorderLayout.NORTH);
+
+        // Bảng người chơi
         String[] header = {"ID", "Tên người chơi", "Họ tên", "Trạng thái"};
-        ClientHandler clientHandler = new ClientHandler(token);
-        this.socket = clientHandler.getSocket();
-        Object[][] data = {};
-        JTable table = new JTable(new DefaultTableModel(data, header));
-        this.add(new JScrollPane(table), BorderLayout.CENTER);
+        tableModel = new DefaultTableModel(header, 0);
+        table = new JTable(tableModel);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+
+        // Kết nối socket
+        this.socket = socket;
+
+        // Thanh nút phía dưới
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
         JButton btnInvite = new JButton("Mời chơi");
         JButton btnRanking = new JButton("Xếp hạng");
@@ -54,104 +52,100 @@ public class HomeView extends JFrame {
         bottom.add(btnInvite);
         bottom.add(btnRanking);
         bottom.add(btnLogout);
-        this.add(bottom, BorderLayout.SOUTH);
+        add(bottom, BorderLayout.SOUTH);
+
+        // --------------------- SỰ KIỆN ---------------------
+
+        // Khi nhấn nút "Mời chơi"
         btnInvite.addActionListener((e) -> {
             int selectedRow = table.getSelectedRow();
             if (selectedRow == -1) {
-                JOptionPane.showMessageDialog(
-                        this,
+                JOptionPane.showMessageDialog(this,
                         "Vui lòng chọn một người chơi để mời!",
-                        "Lỗi",
-                        JOptionPane.ERROR_MESSAGE
-                );
+                        "Lỗi", JOptionPane.ERROR_MESSAGE);
                 return;
             }
             String invitedUsername = (String) table.getValueAt(selectedRow, 1);
-            this.socket.emit("topic/inviteUser", invitedUsername);
-            JOptionPane.showMessageDialog(
-                    this,
+            socket.emit("topic/inviteUser", invitedUsername);
+            JOptionPane.showMessageDialog(this,
                     "Đã gửi lời mời chơi đến " + invitedUsername,
-                    "Thành công",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+                    "Thành công", JOptionPane.INFORMATION_MESSAGE);
         });
-        this.socket.on("topic/getAllUsersResponse", objects -> {
-            try {
-                JSONArray jsonArray = (JSONArray) objects[0];
-                DefaultTableModel defaultTableModel = (DefaultTableModel) table.getModel();
-                for (int i = 0; i < jsonArray.length(); i++) {
-                    var jsonObject = jsonArray.getJSONObject(i);
-                    long id = jsonObject.getLong("id");
-                    String fullName = jsonObject.getString("fullName");
-                    String username = jsonObject.getString("username");
-                    String status = jsonObject.getString("status");
-                    defaultTableModel.addRow(new Object[]{id, username, fullName, status});
+
+        btnRanking.addActionListener(e -> {
+            RankingView topRankingView = new RankingView(socket);
+            topRankingView.setVisible(true);
+        });
+        // Khi server gửi danh sách người chơi
+        socket.on("topic/getAllUsersResponse", args -> {
+            JSONArray users = (JSONArray) args[0];
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    tableModel.setRowCount(0);
+                    for (int i = 0; i < users.length(); i++) {
+                        JSONObject u = users.getJSONObject(i);
+                        tableModel.addRow(new Object[]{
+                                u.getLong("id"),
+                                u.getString("username"),
+                                u.getString("fullName"),
+                                u.getString("status")
+                        });
+                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
                 }
-            } catch (JSONException e) {
-                System.out.println("Error parsing JSON: " + e.getMessage());
-            }
+            });
         });
-        this.socket.on("topic/initGame", (objects) -> {
+        socket.emit("topic/getAllUsersResponse");
+        // Khi có lời mời từ người khác
+        socket.on("topic/inviteUser", args -> {
             try {
-                JSONObject jsonObject = (JSONObject) objects[0];
-
-                // Lấy data từ server
-                JSONArray musicIds = jsonObject.getJSONArray("musicIds");
-                JSONArray gameItemIds = jsonObject.getJSONArray("gameItemIds");
-                long gameId = jsonObject.getLong("gameId");
-
-                System.out.println("Game initialized with " + musicIds.length() + " questions");
-                System.out.println("Game ID: " + gameId);
+                JSONObject json = (JSONObject) args[0];
+                String fromUser = json.getString("from");
 
                 SwingUtilities.invokeLater(() -> {
-                    // Đóng màn hình hiện tại
-                    this.dispose();
-
-                    // Tạo GameView với đầy đủ thông tin
-                    GameView gameView = new GameView(
-                            this.socket,
-                            musicIds,
-                            gameItemIds,
-                            gameId
+                    int choice = JOptionPane.showConfirmDialog(
+                            this,
+                            "Người chơi " + fromUser + " đang mời bạn chơi!\nBạn có chấp nhận không?",
+                            "Lời mời chơi",
+                            JOptionPane.YES_NO_OPTION
                     );
-                    gameView.setVisible(true);
-
-                    // Emit để lấy câu hỏi đầu tiên (câu 0)
-                    try {
-                        JSONObject changeQuestionData = new JSONObject();
-                        changeQuestionData.put("musicId", musicIds.get(0));
-                        this.socket.emit("topic/changeQuestion", changeQuestionData.toString());
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                        JOptionPane.showMessageDialog(null,
-                                "Lỗi khi tải câu hỏi: " + e.getMessage());
+                    if (choice == JOptionPane.YES_OPTION) {
+                        socket.emit("topic/acceptInvite", fromUser);
                     }
                 });
+            } catch (JSONException ex) {
+                ex.printStackTrace();
+            }
+        });
 
-            } catch (JSONException e) {
-                e.printStackTrace();
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(null,
-                            "Lỗi khởi tạo game: " + e.getMessage());
-                });
-            }
-        });
-        this.socket.on("topic/inviteUser", objects -> {
+        // Khi server gửi thông tin khởi tạo game
+        socket.on("topic/initGame", args -> {
             try {
-                JSONObject jsonObject = (JSONObject) objects[0];
-                String fromUser = jsonObject.getString("from");
-                int result = JOptionPane.showConfirmDialog(
-                        this,
-                        "Người chơi " + fromUser + " đang mời bạn chơi!",
-                        "Lời mời chơi",
-                        JOptionPane.YES_NO_OPTION
-                );
-                if (result == JOptionPane.YES_OPTION) {
-                    this.socket.emit("topic/acceptInvite", fromUser);
-                }
-            } catch (JSONException e) {
-                throw new RuntimeException(e);
+                JSONObject data = (JSONObject) args[0];
+                JSONArray musicIds = data.getJSONArray("musicIds");
+                long gameId = data.getLong("gameId");
+
+                SwingUtilities.invokeLater(() -> {
+                    dispose();
+                    GameView gameView = new GameView(socket, gameId, musicIds);
+                    gameView.setVisible(true);
+                });
+            } catch (JSONException ex) {
+                ex.printStackTrace();
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        this, "Lỗi khởi tạo game: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE));
             }
         });
+
+        // Khi bấm "Đăng xuất"
+        btnLogout.addActionListener(e -> {
+            socket.disconnect();
+            dispose();
+            new LoginView().setVisible(true);
+        });
+
+        // Yêu cầu server gửi danh sách người chơi ngay khi mở màn
+        socket.emit("topic/getAllUsers");
     }
 }
