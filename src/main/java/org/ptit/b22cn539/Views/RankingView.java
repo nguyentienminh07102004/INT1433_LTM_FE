@@ -1,14 +1,22 @@
 package org.ptit.b22cn539.Views;
 
 import io.socket.client.Socket;
-import org.json.JSONObject;
-
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-import java.awt.*;
-import java.util.Iterator;
+import java.awt.BorderLayout;
+import java.awt.Font;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.table.DefaultTableModel;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class RankingView extends JFrame {
 
@@ -41,16 +49,25 @@ public class RankingView extends JFrame {
         socket.on("topic/getTopRanking", args -> {
             Object obj = args[0];
             System.out.println("Received: " + obj + " | class: " + obj.getClass());
-
-            if (obj instanceof JSONObject json) {
-                Map<String, Long> ranking = new LinkedHashMap<>();
-                Iterator<String> keys = json.keys();
-                while (keys.hasNext()) {
-                    String k = keys.next();
-                    ranking.put(k, json.optLong(k));
+            try {
+                if (obj instanceof JSONArray json) {
+                    List<JSONArray> list = new ArrayList<>();
+                    for (int i = 0; i < json.length(); i++) {
+                        JSONArray jsonArray = json.getJSONArray(i);
+                        list.add(jsonArray);
+                    }
+                    list = list.stream().sorted((o1, o2) -> o2.optInt(1) - o1.optInt(1)).toList();
+                    Map<String, Long> ranking = new LinkedHashMap<>();
+                    for (JSONArray jsonObject : list) {
+                        String username = jsonObject.getString(0);
+                        long score = jsonObject.optInt(1);
+                        ranking.put(username, score);
+                    }
+                    System.out.println(ranking);
+                    SwingUtilities.invokeLater(() -> updateTable(ranking));
                 }
-                // Cập nhật JTable trên EDT
-                SwingUtilities.invokeLater(() -> updateTable(ranking));
+            } catch (Exception exception) {
+                System.out.println(exception.getMessage());
             }
         });
         socket.emit("topic/getTopRanking");
@@ -63,7 +80,6 @@ public class RankingView extends JFrame {
     private void updateTable(Map<String, Long> ranking) {
         DefaultTableModel model = (DefaultTableModel) rankingTable.getModel();
         model.setRowCount(0); // Xóa dữ liệu cũ
-
         int rank = 1;
         for (Map.Entry<String, Long> entry : ranking.entrySet()) {
             model.addRow(new Object[]{rank++, entry.getKey(), entry.getValue()});
