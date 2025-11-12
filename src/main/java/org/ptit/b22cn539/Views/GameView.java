@@ -152,7 +152,7 @@ public class GameView extends JFrame {
             System.out.println(url);
             currentMusic = new MusicResponse(id, title, description, url, answers);
 
-            lblQuestion.setText("Câu " + (currentQuestionIndex + 1) + "/" + musicIds.length() + ": " + title);
+            lblQuestion.setText("Câu " + (currentQuestionIndex + 1) + "/" + musicIds.length());
             btnPlay.setEnabled(url != null && !url.isEmpty());
 
             // Đặt các nút đáp án
