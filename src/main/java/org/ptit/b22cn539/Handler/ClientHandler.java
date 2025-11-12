@@ -23,7 +23,7 @@ public class ClientHandler {
     List<UserResponse> userResponses;
     public ClientHandler(String token) throws IOException {
         this.token = token;
-        URI uri = URI.create("http://localhost:9092?token=" + token.strip());
+        URI uri = URI.create("http://10.109.180.251:9092?token=" + token.strip());
         this.socket = IO.socket(uri);
         this.socket.connect();
         socket.on(Socket.EVENT_CONNECT, (objects) -> System.out.println("Connected to server"));

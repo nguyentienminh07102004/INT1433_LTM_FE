@@ -61,7 +61,7 @@ public class LoginView extends JFrame {
                 jsonObject.put("password", password);
                 HttpRequest httpRequest = HttpRequest.newBuilder()
                         .POST(HttpRequest.BodyPublishers.ofString(jsonObject.toString()))
-                        .uri(URI.create("http://localhost:8080/users/login"))
+                        .uri(URI.create("http://10.109.180.251:8080/users/login"))
                         .header("Content-Type", "application/json")
                         .build();
                 HttpClient httpClient = HttpClient.newHttpClient();
