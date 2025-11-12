@@ -118,6 +118,33 @@ public class HomeView extends JFrame {
             }
         });
 
+        socket.on("topic/changeStatus", args -> {
+            try {
+                JSONObject json = (JSONObject) args[0];
+                String username = json.getString("username");
+                String status = json.getString("status");
+                String id = json.getString("id");
+                String fullName = json.getString("fullName");
+                System.out.println(username);
+                SwingUtilities.invokeLater(() -> {
+                    boolean isExists = true;
+                    for (int i = 0; i < tableModel.getRowCount(); i++) {
+                        System.out.println(tableModel.getValueAt(i, 1));
+                        if (String.valueOf(tableModel.getValueAt(i, 1)).trim().equalsIgnoreCase(username.trim())) {
+                            tableModel.setValueAt(status, i, 3);
+                            isExists = false;
+                            break;
+                        }
+                    }
+                    if (isExists) {
+                        tableModel.addRow(new Object[]{id, username, fullName, status});
+                    }
+                });
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         socket.on("topic/inviteUser", args -> {
             try {
                 JSONObject json = (JSONObject) args[0];

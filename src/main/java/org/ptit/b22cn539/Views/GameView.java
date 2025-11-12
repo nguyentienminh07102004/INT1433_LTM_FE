@@ -133,7 +133,6 @@ public class GameView extends JFrame {
         });
     }
 
-    /** Cập nhật UI dựa trên MusicResponse server trả về */
     private void updateQuestionUI(JSONObject data) {
         try {
             // Chuyển JSONObject thành MusicResponse
@@ -238,6 +237,7 @@ public class GameView extends JFrame {
                     "gameId", String.valueOf(gameId),
                     "score", String.valueOf(score)
             ));
+            timer.stop();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -247,12 +247,12 @@ public class GameView extends JFrame {
         for (JButton btn : answerButtons) btn.setEnabled(false);
     }
 
-    /** Nghe nhạc từ url */
     private void playMusic() {
         if (currentMusic == null || currentMusic.getUrl() == null || currentMusic.getUrl().isEmpty()) return;
         new Thread(() -> {
             try {
                 AudioInputStream audioIn = AudioSystem.getAudioInputStream(new URL(currentMusic.getUrl()));
+                System.out.println(currentMusic.getUrl());
                 Clip clip = AudioSystem.getClip();
                 clip.open(audioIn);
                 clip.start();
